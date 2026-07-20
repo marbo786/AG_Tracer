@@ -1,0 +1,44 @@
+{
+  "name": "antigravity-tracer",
+  "displayName": "Antigravity Tracer",
+  "description": "A DevTools panel for AI coding agents — see what Antigravity did, in real time.",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "antigravityTracer.openPanel",
+        "title": "Open Antigravity Tracer",
+        "category": "Antigravity Tracer"
+      }
+    ],
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "antigravity-tracer",
+          "title": "AG Tracer",
+          "icon": "$(debug-alt)"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@ag-tracer/collector": "*",
+    "@ag-tracer/shared": "*"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.5.0",
+    "rimraf": "^5.0.0"
+  }
+}

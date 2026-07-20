@@ -1,0 +1,13 @@
+{
+  "name": "antigravity-tracer",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "collector",
+    "extension",
+    "ui"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

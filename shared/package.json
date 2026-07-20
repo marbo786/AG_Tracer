@@ -1,0 +1,22 @@
+{
+  "name": "@ag-tracer/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/schema/index.js",
+  "types": "./dist/schema/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/schema/index.js",
+      "require": "./dist/schema/index.js",
+      "types": "./dist/schema/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rimraf dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "rimraf": "^5.0.0"
+  }
+}
