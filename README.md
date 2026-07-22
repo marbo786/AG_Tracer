@@ -1,46 +1,70 @@
-# Antigravity Tracer
+<div align="center">
 
-Antigravity Tracer is a DevTools panel for AI coding agents. It provides a real-time view into what Antigravity is doing: its step-by-step reasoning, tool calls, file accesses, and timeline of execution.
+# ⚡ Antigravity Tracer
+
+**A DevTools panel for AI coding agents.**
+
+See exactly what your AI agent did inside the Google Antigravity IDE — every tool call, every file it touched, every step, in order and in real time.
+
+![TypeScript](https://img.shields.io/badge/TypeScript-88.3%25-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![VS Code](https://img.shields.io/badge/VS%20Code-Extension-007ACC?style=flat-square&logo=visualstudiocode&logoColor=white)
+![React](https://img.shields.io/badge/React-Vite-61DAFB?style=flat-square&logo=react&logoColor=black)
+![SQLite](https://img.shields.io/badge/sql.js-WASM%20SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)
+![Open VSX](https://img.shields.io/badge/Open%20VSX-published-C160EF?style=flat-square)
+
+</div>
+
+---
+
+## Overview
+
+AI coding agents like Antigravity move fast and mostly out of sight — you see the final diff, but not the trail of reads, writes, and tool calls that got there. **Antigravity Tracer** opens that up. It tails the agent's own execution logs and renders them as a live, scrollable timeline right inside the editor, so you can inspect what the agent actually did during a session rather than reconstructing it from memory.
 
 ## Installation
 
-You can install the extension directly from the built-in Extensions view in VS Code (it is published on [Open VSX](https://open-vsx.org/extension/marbo786/antigravity-tracer)). Just search for **Antigravity Tracer**.
+Search for **Antigravity Tracer** in the Extensions view — it's published on [Open VSX](https://open-vsx.org/extension/marbo786/antigravity-tracer). Alternatively, grab the `.vsix` from the [Releases](https://github.com/marbo786/AG_Tracer/releases) page and install it manually via **Extensions > Install from VSIX...**.
 
-Alternatively, you can download the `.vsix` file from the [Releases](https://github.com/marbo786/AG_Tracer/releases) page of this repository and install it manually via **Extensions > Install from VSIX...** in VS Code.
+## Architecture
 
-## Architecture Overview
+Antigravity Tracer is a monorepo with four workspaces, each with a single responsibility:
 
-The system is built as a monorepo containing the following workspaces:
+```mermaid
+flowchart LR
+    A["Antigravity IDE<br/>transcript_full.jsonl"] --> B["@ag-tracer/collector<br/>Parser → Normalizer → sql.js"]
+    B --> C["@ag-tracer/extension<br/>VS Code Extension Host"]
+    C --> D["@ag-tracer/ui<br/>React Webview (Vite)"]
+    E["@ag-tracer/shared<br/>Typed data model"] -.-> B
+    E -.-> C
+    E -.-> D
+```
 
-1. **`@ag-tracer/shared`**  
-   Contains the single-source-of-truth TypeScript definitions for the data model (`Span`, `ToolCallRecord`, `FileAccessRecord`, `RawStep`, etc.). These types are used strictly across all layers of the stack.
+| Workspace | Responsibility |
+|---|---|
+| **`shared`** | Single source of truth for the data model — `Span`, `ToolCallRecord`, `FileAccessRecord`, `RawStep` — used across every layer |
+| **`collector`** | Watches Antigravity's `transcript_full.jsonl` files. A **Parser** incrementally reads lines (tolerant of truncated/in-progress writes), a **Normalizer** turns raw steps into typed domain objects, and **Storage** persists them via `sql.js` (WebAssembly SQLite) — fast, deduplicated, ordered retrieval across IDE reloads with no native module compilation required |
+| **`extension`** | The VS Code Extension Host layer. Manages the collector's lifecycle for "always-on" tracking, owns the Webview panel, and pushes live `spans:update` events over a typed messaging protocol |
+| **`ui`** | The React + Vite frontend rendered in the VS Code Webview — an information-dense timeline view with virtualization for handling large sessions fluidly |
 
-2. **`@ag-tracer/collector`**  
-   The ingestion backend. It watches for `transcript_full.jsonl` files in the Antigravity `brain/` directory.  
-   - **Parser**: Incrementally reads JSONL files, tolerant of truncated, incomplete, or corrupted lines from ongoing writes.  
-   - **Normalizer**: Transforms raw Antigravity execution steps into strongly-typed domain objects.  
-   - **Storage**: Uses `sql.js` (WebAssembly SQLite) to persist execution data. Provides fast lookups, deduplication, and ordered retrieval. SQLite is used to enable complex queries (e.g., file access heatmaps, multi-conversation indexing) and persistence across IDE reloads without blowing up memory footprint, all without requiring native module compilation.
+## Tech Stack
 
-3. **`@ag-tracer/extension`**  
-   The VS Code Extension Host layer.  
-   - Manages the lifecycle of the `Collector` to ensure "always-on" tracking.  
-   - Handles the Webview Panel instance.  
-   - Facilitates the messaging protocol (`ExtensionToWebviewMessage`, `WebviewToExtensionMessage`) pushing live `spans:update` events to the frontend.
-
-4. **`@ag-tracer/ui`**  
-   The React frontend running inside the VS Code Webview. Built with Vite.  
-   - Provides an information-dense, scalable timeline view of agent steps.  
-   - Implements performance techniques like list virtualization to handle thousands of trace events fluidly.  
-   - Respects native VS Code theming through standard CSS variables.
-
-## Building from Source
-
-1. Run `npm install` at the root directory to install all workspace dependencies.
-2. Build the entire project (shared, ui, collector, and extension) via:
-   ```bash
-   npm run build:all
-   ```
+- **Language:** TypeScript across the entire stack
+- **Editor integration:** VS Code Extension API
+- **Frontend:** React, Vite
+- **Storage:** sql.js (WebAssembly SQLite — no native build step)
+- **Data flow:** Extension ↔ Webview messaging protocol; collector runs as a child process
 
 ## Getting Started
 
-In VS Code, press `F5` to run the Extension. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run **`Antigravity Tracer: Open Antigravity Tracer`**. The panel will open and will begin tailing `transcript_full.jsonl` files inside `~/.gemini/antigravity/brain/` automatically.
+**Requirements:** Node.js >= 18
+
+```bash
+# 1. Install all workspace dependencies
+npm install
+
+# 2. Build everything (shared, ui, collector, extension)
+npm run build:all
+```
+
+In VS Code, press **`F5`** to launch the Extension Development Host. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run **`Antigravity Tracer: Open Antigravity Tracer`**. The panel opens and automatically starts tailing `transcript_full.jsonl` files inside `~/.gemini/antigravity/brain/`.
+
+## Project Structure
