@@ -4,5 +4,9 @@ src/**
 .gitignore
 yarn.lock
 tsconfig.json
+tsconfig.tsbuildinfo
 **/*.map
 **/*.ts
+!dist/**/*.js
+node_modules/**
+*.vsix
