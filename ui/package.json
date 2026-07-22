@@ -10,10 +10,15 @@
   },
   "dependencies": {
     "@ag-tracer/shared": "*",
+    "@monaco-editor/react": "^4.7.0",
     "@tanstack/react-virtual": "^3.8.0",
+    "@xyflow/react": "^12.11.2",
+    "framer-motion": "^12.42.2",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "react-resizable-panels": "^2.0.0"
+    "react-resizable-panels": "^2.0.0",
+    "recharts": "^3.10.0",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@types/react": "^18.3.0",

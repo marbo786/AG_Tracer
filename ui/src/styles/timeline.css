@@ -37,6 +37,18 @@
 
 .timeline-row--error {
   border-left: 3px solid var(--vscode-charts-red, #f14c4c);
+  background-color: rgba(241, 76, 76, 0.05);
+}
+
+.timeline-row--running {
+  border-left: 3px solid var(--vscode-charts-yellow, #cca700);
+  animation: pulse-running 2s infinite ease-in-out;
+}
+
+@keyframes pulse-running {
+  0% { border-left-color: var(--vscode-charts-yellow, #cca700); background-color: transparent; }
+  50% { border-left-color: var(--vscode-charts-orange, #d18616); background-color: rgba(204, 167, 0, 0.05); }
+  100% { border-left-color: var(--vscode-charts-yellow, #cca700); background-color: transparent; }
 }
 
 .timeline-step-index {

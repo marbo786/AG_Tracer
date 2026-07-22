@@ -1,7 +1,7 @@
 {
   "name": "@ag-tracer/shared",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "main": "./dist/schema/index.js",
   "types": "./dist/schema/index.d.ts",
   "exports": {

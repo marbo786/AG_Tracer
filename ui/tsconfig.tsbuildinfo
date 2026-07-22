@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/vscode.d.ts","./src/components/conversationselector.tsx","./src/hooks/usespans.ts","./src/hooks/usevscodeapi.ts","./src/timeline/filetouchbadge.tsx","./src/timeline/timeline.tsx","./src/timeline/timelinerow.tsx","./src/timeline/toolcallbadge.tsx","./src/timeline/truncationindicator.tsx"],"version":"5.9.3"}

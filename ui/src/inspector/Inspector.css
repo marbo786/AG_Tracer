@@ -1,0 +1,60 @@
+.inspector {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+}
+
+.inspector-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px 0 12px;
+  background: var(--vscode-editorGroupHeader-tabsBackground);
+  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
+}
+
+.inspector-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+  margin-right: 16px;
+  letter-spacing: 0.5px;
+}
+
+.inspector-tabs {
+  display: flex;
+  flex: 1;
+}
+
+.inspector-tab {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-top: 1px solid transparent;
+  color: var(--vscode-tab-inactiveForeground);
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+}
+
+.inspector-tab:hover:not(.disabled) {
+  color: var(--vscode-tab-activeForeground);
+}
+
+.inspector-tab.active {
+  background: var(--vscode-tab-activeBackground);
+  color: var(--vscode-tab-activeForeground);
+  border-top: 1px solid var(--vscode-tab-activeBorderTop);
+}
+
+.inspector-tab.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.inspector-body {
+  flex: 1;
+  overflow: hidden;
+}

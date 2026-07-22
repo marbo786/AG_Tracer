@@ -1,21 +1,32 @@
-import Database, { type Database as SQLiteDatabase } from 'better-sqlite3';
+import initSqlJs, { type Database as SqlJsDatabase } from 'sql.js';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 
 export class TracerDatabase {
-  private db: SQLiteDatabase;
+  private db!: SqlJsDatabase;
+  private dbPath: string;
 
   constructor(databasePath: string) {
-    // SQLite exists for persistence across IDE restarts, session history, replay, search,
-    // and overall robust state management - not just for the MVP single timeline.
-    this.db = new Database(databasePath);
+    this.dbPath = databasePath;
+  }
+
+  public async init(): Promise<void> {
+    const sqlJsDir = require('path').dirname(require.resolve('sql.js'));
+    const wasmPath = require('path').join(sqlJsDir, 'sql-wasm.wasm');
     
-    // Enable WAL mode for better concurrent read/write performance
-    this.db.pragma('journal_mode = WAL');
+    const SQL = await initSqlJs({
+      locateFile: file => file === 'sql-wasm.wasm' ? wasmPath : file
+    });
     
+    if (existsSync(this.dbPath)) {
+      this.db = new SQL.Database(readFileSync(this.dbPath));
+    } else {
+      this.db = new SQL.Database();
+    }
     this.initializeSchema();
   }
 
   private initializeSchema(): void {
-    this.db.exec(`
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS spans (
         conversation_id TEXT NOT NULL,
         step_index INTEGER NOT NULL,
@@ -60,11 +71,30 @@ export class TracerDatabase {
     `);
   }
 
-  public getDatabase(): SQLiteDatabase {
+  public getDatabase(): SqlJsDatabase {
     return this.db;
+  }
+  
+  public transaction(cb: () => void): void {
+    this.db.exec('BEGIN TRANSACTION;');
+    try {
+      cb();
+      this.db.exec('COMMIT;');
+    } catch (e) {
+      this.db.exec('ROLLBACK;');
+      throw e;
+    }
+  }
+
+  public save(): void {
+    if (this.db) {
+      const data = this.db.export();
+      writeFileSync(this.dbPath, Buffer.from(data));
+    }
   }
 
   public close(): void {
+    this.save();
     this.db.close();
   }
 }

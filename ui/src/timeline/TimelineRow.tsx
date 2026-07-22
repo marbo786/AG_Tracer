@@ -1,4 +1,5 @@
 import type { Span, ToolCallRecord, FileAccessRecord } from '@ag-tracer/shared';
+import { motion } from 'framer-motion';
 import { ToolCallBadge } from './ToolCallBadge';
 import { FileTouchBadge } from './FileTouchBadge';
 import { TruncationIndicator } from './TruncationIndicator';
@@ -9,9 +10,12 @@ interface TimelineRowProps {
   fileAccesses: FileAccessRecord[];
   isSelected: boolean;
   onClick: () => void;
+  animateEntrance?: boolean;
+  onAnimationComplete?: () => void;
+  isThrashing?: boolean;
 }
 
-export function TimelineRow({ span, toolCalls, fileAccesses, isSelected, onClick }: TimelineRowProps) {
+export function TimelineRow({ span, toolCalls, fileAccesses, isSelected, isThrashing, onClick, animateEntrance, onAnimationComplete }: TimelineRowProps) {
   const sourceClass = getSourceClass(span.source, span.status);
   const rowClass = `timeline-row ${sourceClass} ${isSelected ? 'timeline-row--selected' : ''}`;
   
@@ -21,23 +25,50 @@ export function TimelineRow({ span, toolCalls, fileAccesses, isSelected, onClick
   // Get a content preview
   const preview = getContentPreview(span);
   
-  return (
-    <div className={rowClass} onClick={onClick} role="button" tabIndex={0}>
+  const content = (
+    <>
       <span className="timeline-step-index">{span.stepIndex}</span>
       <span className="timeline-type-badge">{formatStepType(span.type)}</span>
+      {isThrashing && <span className="timeline-type-badge" style={{ backgroundColor: 'var(--vscode-charts-red)', color: '#fff' }} title="Thrash Detected: Repeated writes to the same file in a short window">🔄 Thrash</span>}
       <span className="timeline-content-preview">{preview}</span>
       <div className="timeline-tools">
-        {toolCalls.map((tc, i) => <ToolCallBadge key={i} toolCall={tc} />)}
-        {fileAccesses.map((fa, i) => <FileTouchBadge key={i} filePath={fa.filePath} accessType={fa.accessType} />)}
+        {toolCalls.slice(0, 4).map((tc, i) => <ToolCallBadge key={i} toolCall={tc} />)}
+        {toolCalls.length > 4 && <span className="tool-badge tool-badge--other">+{toolCalls.length - 4} tools</span>}
+        {fileAccesses.slice(0, 4).map((fa, i) => <FileTouchBadge key={i} filePath={fa.filePath} accessType={fa.accessType} />)}
+        {fileAccesses.length > 4 && <span className="file-badge">+{fileAccesses.length - 4} files</span>}
       </div>
       <TruncationIndicator truncatedFields={span.truncatedFields} />
       <span className="timeline-timestamp">{time}</span>
+    </>
+  );
+
+  if (animateEntrance) {
+    return (
+      <motion.div 
+        className={rowClass} 
+        onClick={onClick} 
+        role="button" 
+        tabIndex={0}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
+        onAnimationComplete={onAnimationComplete}
+      >
+        {content}
+      </motion.div>
+    );
+  }
+  
+  return (
+    <div className={rowClass} onClick={onClick} role="button" tabIndex={0}>
+      {content}
     </div>
   );
 }
 
 function getSourceClass(source: string, status: string): string {
   if (status === 'ERROR') return 'timeline-row--error';
+  if (status === 'RUNNING') return 'timeline-row--running';
   switch (source) {
     case 'USER_EXPLICIT': return 'timeline-row--user';
     case 'MODEL': return 'timeline-row--model';

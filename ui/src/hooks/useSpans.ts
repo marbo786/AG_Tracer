@@ -1,61 +1,45 @@
-import { useState, useEffect, useCallback } from 'react';
-import type { Span, ToolCallRecord, FileAccessRecord } from '@ag-tracer/shared';
+import { useEffect, useCallback, useRef } from 'react';
+import { useTracerStore } from '../store/useTracerStore';
 
-// Re-define the message types here to avoid importing from extension/
-// (the UI should not depend on the extension package)
-interface SpanData {
-  spans: Span[];
-  toolCalls: ToolCallRecord[];
-  fileAccesses: FileAccessRecord[];
-}
-
-interface SpanState {
-  conversationIds: string[];
-  activeConversationId: string | null;
-  data: SpanData;
-  isLoading: boolean;
+interface VsCodeApi {
+  postMessage(message: unknown): void;
 }
 
 export function useSpans(vscodeApi: VsCodeApi | null) {
-  const [state, setState] = useState<SpanState>({
-    conversationIds: [],
-    activeConversationId: null,
-    data: { spans: [], toolCalls: [], fileAccesses: [] },
-    isLoading: true
-  });
+  const { 
+    setConversations, 
+    setActiveConversation, 
+    appendData, 
+    setError 
+  } = useTracerStore();
 
-  // Listen for messages from the extension
+  const activeConversationRef = useRef<string | null>(null);
+
+  // Listen for messages from the extension — only set up once
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
       const message = event.data;
       switch (message.type) {
         case 'conversations:list':
-          setState(prev => ({ ...prev, conversationIds: message.conversationIds, isLoading: false }));
+          setConversations(message.conversations);
           break;
         case 'spans:initial':
-          setState(prev => ({
-            ...prev,
-            activeConversationId: message.conversationId,
-            data: {
-              spans: message.spans,
-              toolCalls: message.toolCalls,
-              fileAccesses: message.fileAccesses
-            },
-            isLoading: false
-          }));
+          activeConversationRef.current = message.conversationId;
+          setActiveConversation(message.conversationId, {
+            spans: message.spans,
+            toolCalls: message.toolCalls,
+            fileAccesses: message.fileAccesses
+          });
           break;
         case 'spans:update':
-          setState(prev => {
-            if (prev.activeConversationId !== message.conversationId) return prev;
-            return {
-              ...prev,
-              data: {
-                spans: [...prev.data.spans, ...message.spans],
-                toolCalls: [...prev.data.toolCalls, ...message.toolCalls],
-                fileAccesses: [...prev.data.fileAccesses, ...message.fileAccesses]
-              }
-            };
+          appendData(message.conversationId, {
+            spans: message.spans,
+            toolCalls: message.toolCalls,
+            fileAccesses: message.fileAccesses
           });
+          break;
+        case 'error':
+          setError(message.message);
           break;
       }
     }
@@ -66,12 +50,13 @@ export function useSpans(vscodeApi: VsCodeApi | null) {
     vscodeApi?.postMessage({ type: 'request:conversations' });
     
     return () => window.removeEventListener('message', handleMessage);
-  }, [vscodeApi]);
+  }, [vscodeApi, setConversations, setActiveConversation, appendData, setError]);
 
   const selectConversation = useCallback((conversationId: string) => {
-    setState(prev => ({ ...prev, isLoading: true, activeConversationId: conversationId }));
+    useTracerStore.getState().setLoading(true);
+    useTracerStore.getState().setError(null);
     vscodeApi?.postMessage({ type: 'request:spans', conversationId });
   }, [vscodeApi]);
 
-  return { ...state, selectConversation };
+  return { selectConversation };
 }

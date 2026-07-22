@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { Collector } from '@ag-tracer/collector';
 import { TracerWebviewProvider } from './webview-provider.js';
 import type { WebviewToExtensionMessage } from './messaging.js';
+import { mkdirSync } from 'node:fs';
 
 let collector: Collector | null = null;
 let webviewProvider: TracerWebviewProvider | null = null;
@@ -12,8 +13,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const brainPath = join(homedir(), '.gemini', 'antigravity', 'brain');
   const databasePath = join(context.globalStorageUri.fsPath, 'tracer.db');
   
-  // Ensure the storage directory exists
-  vscode.workspace.fs.createDirectory(context.globalStorageUri);
+  // Ensure the storage directory exists before sql.js attempts to write
+  mkdirSync(context.globalStorageUri.fsPath, { recursive: true });
   
   // Track the currently selected conversation
   let activeConversationId: string | null = null;
@@ -25,6 +26,13 @@ export function activate(context: vscode.ExtensionContext): void {
   
   // Start the collector — it begins watching immediately (always-on)
   collector = new Collector(brainPath, databasePath, {
+    onConversationFound: (newConversationId) => {
+      // Re-send the full list of known conversations
+      if (webviewProvider?.isVisible()) {
+        const conversations = collector?.getConversations() ?? [];
+        webviewProvider.postMessage({ type: 'conversations:list', conversations });
+      }
+    },
     onSpansIngested: (conversationId, spans, toolCalls, fileAccesses) => {
       // Push updates to webview if it's showing this conversation
       if (webviewProvider?.isVisible() && conversationId === activeConversationId) {
@@ -56,19 +64,27 @@ export function activate(context: vscode.ExtensionContext): void {
   function handleWebviewMessage(message: WebviewToExtensionMessage): void {
     switch (message.type) {
       case 'request:conversations': {
-        const conversationIds = collector?.getConversationIds() ?? [];
-        webviewProvider?.postMessage({ type: 'conversations:list', conversationIds });
+        const conversations = collector?.getConversations() ?? [];
+        webviewProvider?.postMessage({ type: 'conversations:list', conversations });
         break;
       }
       case 'request:spans': {
-        activeConversationId = message.conversationId;
-        const data = collector?.getSpansByConversation(message.conversationId);
-        if (data) {
-          webviewProvider?.postMessage({
-            type: 'spans:initial',
-            conversationId: message.conversationId,
-            ...data
-          });
+        try {
+          activeConversationId = message.conversationId;
+          const data = collector?.getSpansByConversation(message.conversationId);
+          
+          if (data) {
+            webviewProvider?.postMessage({
+              type: 'spans:initial',
+              conversationId: message.conversationId,
+              ...data
+            });
+          }
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          console.error('[AG Tracer] Error fetching spans:', err);
+          webviewProvider?.postMessage({ type: 'error', message: 'Failed to load spans: ' + errorMessage });
+          vscode.window.showErrorMessage('Antigravity Tracer: Error fetching spans: ' + errorMessage);
         }
         break;
       }

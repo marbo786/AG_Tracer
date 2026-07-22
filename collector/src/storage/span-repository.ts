@@ -1,4 +1,4 @@
-import type { Database as SQLiteDatabase, Statement } from 'better-sqlite3';
+import type { Database as SqlJsDatabase } from 'sql.js';
 import type { Span } from '@ag-tracer/shared';
 import type { TracerDatabase } from './database.js';
 
@@ -16,84 +16,133 @@ interface SpanRow {
 }
 
 export class SpanRepository {
-  private db: SQLiteDatabase;
+  private db: SqlJsDatabase;
   
-  private insertStmt: Statement;
-  private getByConversationStmt: Statement;
-  private getLatestStepIndexStmt: Statement;
-  private getConversationIdsStmt: Statement;
-
   constructor(database: TracerDatabase) {
     this.db = database.getDatabase();
-    
-    this.insertStmt = this.db.prepare(`
+  }
+
+  public insertSpan(span: Span): void {
+    const stmt = this.db.prepare(`
       INSERT OR IGNORE INTO spans (
         conversation_id, step_index, source, type, status, 
         created_at, content, thinking, truncated_fields, schema_version
       ) VALUES (
-        @conversationId, @stepIndex, @source, @type, @status,
-        @createdAt, @content, @thinking, @truncatedFields, @schemaVersion
+        $conversationId, $stepIndex, $source, $type, $status,
+        $createdAt, $content, $thinking, $truncatedFields, $schemaVersion
       )
     `);
-
-    this.getByConversationStmt = this.db.prepare(`
-      SELECT * FROM spans 
-      WHERE conversation_id = ? 
-      ORDER BY step_index ASC
-    `);
-
-    this.getLatestStepIndexStmt = this.db.prepare(`
-      SELECT MAX(step_index) as max_step 
-      FROM spans 
-      WHERE conversation_id = ?
-    `);
-
-    this.getConversationIdsStmt = this.db.prepare(`
-      SELECT DISTINCT conversation_id 
-      FROM spans
-    `);
-  }
-
-  public insertSpan(span: Span): void {
-    this.insertStmt.run({
-      conversationId: span.conversationId,
-      stepIndex: span.stepIndex,
-      source: span.source,
-      type: span.type,
-      status: span.status,
-      createdAt: span.createdAt,
-      content: span.content,
-      thinking: span.thinking,
-      truncatedFields: JSON.stringify(span.truncatedFields),
-      schemaVersion: span.schemaVersion
+    stmt.run({
+      $conversationId: span.conversationId,
+      $stepIndex: span.stepIndex,
+      $source: span.source,
+      $type: span.type,
+      $status: span.status,
+      $createdAt: span.createdAt,
+      $content: span.content,
+      $thinking: span.thinking,
+      $truncatedFields: JSON.stringify(span.truncatedFields),
+      $schemaVersion: span.schemaVersion
     });
+    stmt.free();
   }
 
   public insertSpans(spans: Span[]): void {
-    const transaction = this.db.transaction((spansToInsert: Span[]) => {
-      for (const span of spansToInsert) {
-        this.insertSpan(span);
-      }
-    });
-    transaction(spans);
+    if (spans.length === 0) return;
+    const stmt = this.db.prepare(`
+      INSERT OR IGNORE INTO spans (
+        conversation_id, step_index, source, type, status, 
+        created_at, content, thinking, truncated_fields, schema_version
+      ) VALUES (
+        $conversationId, $stepIndex, $source, $type, $status,
+        $createdAt, $content, $thinking, $truncatedFields, $schemaVersion
+      )
+    `);
+    for (const span of spans) {
+      stmt.run({
+        $conversationId: span.conversationId,
+        $stepIndex: span.stepIndex,
+        $source: span.source,
+        $type: span.type,
+        $status: span.status,
+        $createdAt: span.createdAt,
+        $content: span.content,
+        $thinking: span.thinking,
+        $truncatedFields: JSON.stringify(span.truncatedFields),
+        $schemaVersion: span.schemaVersion
+      });
+    }
+    stmt.free();
   }
 
   public getSpansByConversation(conversationId: string): Span[] {
-    const rows = this.getByConversationStmt.all(conversationId) as SpanRow[];
+    const rows: SpanRow[] = [];
+    const stmt = this.db.prepare(`
+      SELECT * FROM spans 
+      WHERE conversation_id = $conversationId 
+      ORDER BY step_index ASC
+    `);
+    stmt.bind({ $conversationId: conversationId });
+    while (stmt.step()) {
+      rows.push(stmt.getAsObject() as unknown as SpanRow);
+    }
+    stmt.free();
     return rows.map(row => this.mapRowToSpan(row));
   }
 
   public getLatestStepIndex(conversationId: string): number | null {
-    const result = this.getLatestStepIndexStmt.get(conversationId) as { max_step: number | null } | undefined;
-    if (!result || result.max_step === null) {
-      return null;
+    const stmt = this.db.prepare(`
+      SELECT MAX(step_index) as max_step 
+      FROM spans 
+      WHERE conversation_id = $conversationId
+    `);
+    stmt.bind({ $conversationId: conversationId });
+    let result: number | null = null;
+    if (stmt.step()) {
+      const obj = stmt.getAsObject() as { max_step: number | null };
+      result = obj.max_step;
     }
-    return result.max_step;
+    stmt.free();
+    return result;
   }
 
   public getConversationIds(): string[] {
-    const rows = this.getConversationIdsStmt.all() as { conversation_id: string }[];
+    const rows: { conversation_id: string }[] = [];
+    const stmt = this.db.prepare(`SELECT DISTINCT conversation_id FROM spans`);
+    while (stmt.step()) {
+      rows.push(stmt.getAsObject() as unknown as { conversation_id: string });
+    }
+    stmt.free();
     return rows.map(row => row.conversation_id);
+  }
+
+  public getLatestSpan(conversationId: string): Span | null {
+    const stmt = this.db.prepare(`
+      SELECT * FROM spans 
+      WHERE conversation_id = $conversationId 
+      ORDER BY step_index DESC LIMIT 1
+    `);
+    stmt.bind({ $conversationId: conversationId });
+    let result: Span | null = null;
+    if (stmt.step()) {
+      result = this.mapRowToSpan(stmt.getAsObject() as unknown as SpanRow);
+    }
+    stmt.free();
+    return result;
+  }
+
+  public updateSpanStatus(conversationId: string, stepIndex: number, newStatus: string): void {
+    const stmt = this.db.prepare(`
+      UPDATE spans 
+      SET status = $newStatus 
+      WHERE conversation_id = $conversationId AND step_index = $stepIndex
+    `);
+    stmt.run({
+      $conversationId: conversationId,
+      $stepIndex: stepIndex,
+      $newStatus: newStatus
+    });
+    stmt.free();
   }
 
   private mapRowToSpan(row: SpanRow): Span {

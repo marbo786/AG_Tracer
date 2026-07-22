@@ -1,0 +1,6 @@
+services:
+  agtracer:
+    image: agtracer
+    build:
+      context: .
+      dockerfile: ./Dockerfile

@@ -1,5 +1,5 @@
-import type { Database as SQLiteDatabase, Statement } from 'better-sqlite3';
-import type { FileAccessRecord, AccessType } from '@ag-tracer/shared';
+import type { Database as SqlJsDatabase } from 'sql.js';
+import type { FileAccessRecord } from '@ag-tracer/shared';
 import type { TracerDatabase } from './database.js';
 
 interface FileAccessRow {
@@ -8,99 +8,115 @@ interface FileAccessRow {
   step_index: number;
   tool_call_index: number;
   file_path: string;
-  access_type: string;
+  access_type: 'read' | 'write' | 'search' | 'list';
   tool_name: string;
 }
 
 export class FileAccessRepository {
-  private db: SQLiteDatabase;
+  private db: SqlJsDatabase;
   
-  private insertStmt: Statement;
-  private getByConversationStmt: Statement;
-  private getByPathStmt: Statement;
-  private getDistinctPathsStmt: Statement;
-
   constructor(database: TracerDatabase) {
     this.db = database.getDatabase();
-    
-    // Avoid duplicates by checking if the record already exists for this specific tool call
-    this.insertStmt = this.db.prepare(`
-      INSERT INTO file_access (
-        conversation_id, step_index, tool_call_index, file_path, access_type, tool_name
-      )
-      SELECT @conversationId, @stepIndex, @toolCallIndex, @filePath, @accessType, @toolName
-      WHERE NOT EXISTS (
-        SELECT 1 FROM file_access
-        WHERE conversation_id = @conversationId
-          AND step_index = @stepIndex
-          AND tool_call_index = @toolCallIndex
-          AND file_path = @filePath
-      )
-    `);
-
-    this.getByConversationStmt = this.db.prepare(`
-      SELECT * FROM file_access 
-      WHERE conversation_id = ? 
-      ORDER BY step_index ASC
-    `);
-
-    this.getByPathStmt = this.db.prepare(`
-      SELECT * FROM file_access 
-      WHERE file_path = ? 
-      ORDER BY conversation_id ASC, step_index ASC
-    `);
-
-    this.getDistinctPathsStmt = this.db.prepare(`
-      SELECT DISTINCT file_path 
-      FROM file_access 
-      WHERE conversation_id = ?
-      ORDER BY file_path ASC
-    `);
   }
 
   public insertFileAccess(record: FileAccessRecord): void {
-    this.insertStmt.run({
-      conversationId: record.conversationId,
-      stepIndex: record.stepIndex,
-      toolCallIndex: record.toolCallIndex,
-      filePath: record.filePath,
-      accessType: record.accessType,
-      toolName: record.toolName
+    const stmt = this.db.prepare(`
+      INSERT INTO file_access (
+        conversation_id, step_index, tool_call_index,
+        file_path, access_type, tool_name
+      ) VALUES (
+        $conversationId, $stepIndex, $toolCallIndex,
+        $filePath, $accessType, $toolName
+      )
+    `);
+    stmt.run({
+      $conversationId: record.conversationId,
+      $stepIndex: record.stepIndex,
+      $toolCallIndex: record.toolCallIndex,
+      $filePath: record.filePath,
+      $accessType: record.accessType,
+      $toolName: record.toolName
     });
+    stmt.free();
   }
 
   public insertFileAccessRecords(records: FileAccessRecord[]): void {
-    const transaction = this.db.transaction((recordsToInsert: FileAccessRecord[]) => {
-      for (const record of recordsToInsert) {
-        this.insertFileAccess(record);
-      }
-    });
-    transaction(records);
+    if (records.length === 0) return;
+    const stmt = this.db.prepare(`
+      INSERT INTO file_access (
+        conversation_id, step_index, tool_call_index,
+        file_path, access_type, tool_name
+      ) VALUES (
+        $conversationId, $stepIndex, $toolCallIndex,
+        $filePath, $accessType, $toolName
+      )
+    `);
+    for (const record of records) {
+      stmt.run({
+        $conversationId: record.conversationId,
+        $stepIndex: record.stepIndex,
+        $toolCallIndex: record.toolCallIndex,
+        $filePath: record.filePath,
+        $accessType: record.accessType,
+        $toolName: record.toolName
+      });
+    }
+    stmt.free();
   }
 
   public getFileAccessByConversation(conversationId: string): FileAccessRecord[] {
-    const rows = this.getByConversationStmt.all(conversationId) as FileAccessRow[];
-    return rows.map(row => this.mapRowToFileAccessRecord(row));
+    const rows: FileAccessRow[] = [];
+    const stmt = this.db.prepare(`
+      SELECT * FROM file_access 
+      WHERE conversation_id = $conversationId 
+      ORDER BY step_index ASC, tool_call_index ASC
+    `);
+    stmt.bind({ $conversationId: conversationId });
+    while (stmt.step()) {
+      rows.push(stmt.getAsObject() as unknown as FileAccessRow);
+    }
+    stmt.free();
+    return rows.map(row => this.mapRowToRecord(row));
   }
 
   public getFileAccessByPath(filePath: string): FileAccessRecord[] {
-    const rows = this.getByPathStmt.all(filePath) as FileAccessRow[];
-    return rows.map(row => this.mapRowToFileAccessRecord(row));
+    const rows: FileAccessRow[] = [];
+    const stmt = this.db.prepare(`
+      SELECT * FROM file_access 
+      WHERE file_path = $filePath 
+      ORDER BY conversation_id ASC, step_index ASC
+    `);
+    stmt.bind({ $filePath: filePath });
+    while (stmt.step()) {
+      rows.push(stmt.getAsObject() as unknown as FileAccessRow);
+    }
+    stmt.free();
+    return rows.map(row => this.mapRowToRecord(row));
   }
 
   public getDistinctFilePaths(conversationId: string): string[] {
-    const rows = this.getDistinctPathsStmt.all(conversationId) as { file_path: string }[];
+    const rows: { file_path: string }[] = [];
+    const stmt = this.db.prepare(`
+      SELECT DISTINCT file_path 
+      FROM file_access 
+      WHERE conversation_id = $conversationId
+    `);
+    stmt.bind({ $conversationId: conversationId });
+    while (stmt.step()) {
+      rows.push(stmt.getAsObject() as unknown as { file_path: string });
+    }
+    stmt.free();
     return rows.map(row => row.file_path);
   }
 
-  private mapRowToFileAccessRecord(row: FileAccessRow): FileAccessRecord {
+  private mapRowToRecord(row: FileAccessRow): FileAccessRecord {
     return {
       id: row.id,
       conversationId: row.conversation_id,
       stepIndex: row.step_index,
       toolCallIndex: row.tool_call_index,
       filePath: row.file_path,
-      accessType: row.access_type as AccessType,
+      accessType: row.access_type,
       toolName: row.tool_name
     };
   }

@@ -1,6 +1,6 @@
 import { watch, type FSWatcher } from 'chokidar';
-import { join, basename, dirname } from 'node:path';
-import { existsSync } from 'node:fs';
+import { basename, dirname } from 'node:path';
+
 
 export interface ConversationFolder {
   conversationId: string;
@@ -26,17 +26,20 @@ export class BrainWatcher {
    * Scan existing conversations and start watching for new ones.
    */
   public async start(): Promise<void> {
-    // Watch for transcript_full.jsonl files appearing under brainPath using a glob pattern
-    // This handles both initial discovery and new files
-    // format: <brainPath>/<conversation-id>/.system_generated/logs/transcript_full.jsonl
-    const watchPattern = join(this.brainPath, '*', '.system_generated', 'logs', 'transcript_full.jsonl');
-    
-    this.watcher = watch(watchPattern, {
+    // Watch the brain directory recursively instead of using a glob pattern,
+    // which avoids Windows glob parsing bugs in chokidar
+    this.watcher = watch(this.brainPath, {
       ignoreInitial: false, 
-      persistent: true 
+      persistent: true,
+      depth: 4
     });
 
     this.watcher.on('add', (filePath) => {
+      // Ensure we only process transcript_full.jsonl
+      if (!filePath.endsWith('transcript_full.jsonl')) {
+        return;
+      }
+
       // The path looks like: brainPath / conversationId / .system_generated / logs / transcript_full.jsonl
       // dirname(filePath) is logs
       // dirname(dirname(filePath)) is .system_generated

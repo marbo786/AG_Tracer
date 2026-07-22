@@ -6,8 +6,9 @@ import type { Span, ToolCallRecord, FileAccessRecord } from '@ag-tracer/shared';
 export type ExtensionToWebviewMessage =
   | { type: 'spans:initial'; conversationId: string; spans: Span[]; toolCalls: ToolCallRecord[]; fileAccesses: FileAccessRecord[] }
   | { type: 'spans:update'; conversationId: string; spans: Span[]; toolCalls: ToolCallRecord[]; fileAccesses: FileAccessRecord[] }
-  | { type: 'conversations:list'; conversationIds: string[] }
-  | { type: 'conversation:changed'; conversationId: string };
+  | { type: 'conversations:list'; conversations: { id: string; title: string }[] }
+  | { type: 'conversation:changed'; conversationId: string }
+  | { type: 'error'; message: string };
 
 /**
  * Messages sent from the Webview to the Extension.

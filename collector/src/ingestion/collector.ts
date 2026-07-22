@@ -8,25 +8,25 @@ import { TranscriptTailer } from './transcript-tailer.js';
 import { normalizeStep } from '../normalizer/normalizer.js';
 
 export interface CollectorEvents {
+  onConversationFound: (conversationId: string) => void;
   onSpansIngested: (conversationId: string, spans: Span[], toolCalls: ToolCallRecord[], fileAccesses: FileAccessRecord[]) => void;
 }
 
 export class Collector {
   private database: TracerDatabase;
-  private spanRepo: SpanRepository;
-  private toolCallRepo: ToolCallRepository;
-  private fileAccessRepo: FileAccessRepository;
+  private spanRepo!: SpanRepository;
+  private toolCallRepo!: ToolCallRepository;
+  private fileAccessRepo!: FileAccessRepository;
   private brainWatcher: BrainWatcher;
   private tailers: Map<string, TranscriptTailer> = new Map();  // conversationId -> tailer
   private pollIntervalMs: number = 1000;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private events: CollectorEvents;
+  private tailerLastActivity: Map<string, number> = new Map();
+  private readonly TIMEOUT_MS = 30000;
 
   constructor(brainPath: string, databasePath: string, events: CollectorEvents) {
     this.database = new TracerDatabase(databasePath);
-    this.spanRepo = new SpanRepository(this.database);
-    this.toolCallRepo = new ToolCallRepository(this.database);
-    this.fileAccessRepo = new FileAccessRepository(this.database);
     this.events = events;
 
     this.brainWatcher = new BrainWatcher(brainPath, {
@@ -34,14 +34,21 @@ export class Collector {
         if (!this.tailers.has(folder.conversationId)) {
           const tailer = new TranscriptTailer(folder.transcriptPath, 0);
           this.tailers.set(folder.conversationId, tailer);
-          // Optional: Do an immediate initial read here if desired, or let the poll loop handle it.
-          // We will let the poll loop handle it naturally to avoid blocking the watcher event.
+          this.events.onConversationFound(folder.conversationId);
         }
       }
     });
   }
 
   public async start(): Promise<void> {
+    await this.database.init();
+    
+    // Repositories must be initialized AFTER database.init() 
+    // because they prepare statements on the active sql.js db instance.
+    this.spanRepo = new SpanRepository(this.database);
+    this.toolCallRepo = new ToolCallRepository(this.database);
+    this.fileAccessRepo = new FileAccessRepository(this.database);
+
     await this.brainWatcher.start();
     
     this.pollTimer = setInterval(() => {
@@ -58,11 +65,40 @@ export class Collector {
     this.database.close();
   }
 
-  public getConversationIds(): string[] {
-    return this.spanRepo.getConversationIds();
+  public getConversations(): { id: string, title: string }[] {
+    const list: { id: string, title: string }[] = [];
+    const db = this.database.getDatabase();
+    
+    // We prepare the statement once to query titles
+    const stmt = db.prepare(`
+      SELECT content FROM spans 
+      WHERE conversation_id = $id AND type = 'USER_INPUT' 
+      ORDER BY step_index ASC LIMIT 1
+    `);
+
+    for (const id of this.tailers.keys()) {
+      stmt.bind({ $id: id });
+      let title = id; // fallback to ID
+      if (stmt.step()) {
+        const obj = stmt.getAsObject() as { content: string | null };
+        if (obj.content) {
+           const match = obj.content.match(/<USER_REQUEST>([\s\S]*?)<\/USER_REQUEST>/);
+           const text = match && match[1] ? match[1] : obj.content;
+           const cleanText = text.trim().replace(/\n/g, ' ');
+           title = cleanText.length > 40 ? cleanText.substring(0, 40) + '...' : cleanText;
+           if (!title) title = id;
+        }
+      }
+      stmt.reset();
+      list.push({ id, title });
+    }
+    stmt.free();
+    
+    return list;
   }
 
   public getSpansByConversation(conversationId: string): { spans: Span[]; toolCalls: ToolCallRecord[]; fileAccesses: FileAccessRecord[] } {
+    if (!this.spanRepo) return { spans: [], toolCalls: [], fileAccesses: [] };
     return {
       spans: this.spanRepo.getSpansByConversation(conversationId),
       toolCalls: this.toolCallRepo.getToolCallsByConversation(conversationId),
@@ -74,7 +110,24 @@ export class Collector {
     for (const [conversationId, tailer] of this.tailers.entries()) {
       try {
         const results = tailer.readNewLines();
-        if (results.length === 0) continue;
+        if (results.length === 0) {
+          const lastActivity = this.tailerLastActivity.get(conversationId) || Date.now();
+          if (Date.now() - lastActivity > this.TIMEOUT_MS) {
+            const latestSpan = this.spanRepo.getLatestSpan(conversationId);
+            if (latestSpan && latestSpan.status === 'RUNNING') {
+              this.database.transaction(() => {
+                this.spanRepo.updateSpanStatus(conversationId, latestSpan.stepIndex, 'INTERRUPTED');
+              });
+              this.database.save();
+              latestSpan.status = 'INTERRUPTED';
+              this.events.onSpansIngested(conversationId, [latestSpan], [], []);
+              this.tailerLastActivity.set(conversationId, Date.now());
+            }
+          }
+          continue;
+        }
+
+        this.tailerLastActivity.set(conversationId, Date.now());
 
         const newSpans: Span[] = [];
         const newToolCalls: ToolCallRecord[] = [];
@@ -94,14 +147,14 @@ export class Collector {
 
         if (newSpans.length > 0) {
           // Process in a transaction
-          const db = this.database.getDatabase();
-          const transaction = db.transaction(() => {
+          this.database.transaction(() => {
             this.spanRepo.insertSpans(newSpans);
             this.toolCallRepo.insertToolCalls(newToolCalls);
             this.fileAccessRepo.insertFileAccessRecords(newFileAccesses);
           });
           
-          transaction();
+          // Save in-memory DB to disk
+          this.database.save();
 
           // Emit event for the extension
           this.events.onSpansIngested(conversationId, newSpans, newToolCalls, newFileAccesses);

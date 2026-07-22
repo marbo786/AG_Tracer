@@ -5,3 +5,5 @@ dist/
 .vscode-test/
 *.vsix
 .DS_Store
+
+vs_buildtools.exe

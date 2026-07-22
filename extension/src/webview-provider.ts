@@ -20,9 +20,12 @@ export class TracerWebviewProvider {
       return;
     }
 
-    // The UI build output lives in ../ui/dist relative to the extension root.
-    // In a packaged extension, these assets would be bundled alongside the extension.
-    const uiDistUri = vscode.Uri.joinPath(this.extensionUri, '..', 'ui', 'dist');
+    // The UI build output lives in ../ui/dist relative to the extension root during dev.
+    // In a packaged extension, these assets are bundled into 'ui-dist' alongside the extension.
+    let uiDistUri = vscode.Uri.joinPath(this.extensionUri, '..', 'ui', 'dist');
+    if (this.context.extensionMode === vscode.ExtensionMode.Production) {
+      uiDistUri = vscode.Uri.joinPath(this.extensionUri, 'ui-dist');
+    }
 
     this.panel = vscode.window.createWebviewPanel(
       'antigravityTracer',
@@ -58,7 +61,6 @@ export class TracerWebviewProvider {
 
   private getWebviewContent(uiDistUri: vscode.Uri): string {
     const webview = this.panel!.webview;
-    const nonce = getNonce();
 
     // Resolve the built assets from ui/dist/assets/
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(uiDistUri, 'assets', 'index.js'));
@@ -69,14 +71,13 @@ export class TracerWebviewProvider {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline' https://fonts.googleapis.com; font-src ${webview.cspSource} https://fonts.gstatic.com; script-src 'nonce-${nonce}'; img-src ${webview.cspSource};">
-  <link rel="stylesheet" href="${styleUri}">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline' https:; font-src ${webview.cspSource} https: data:; script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' https:; worker-src blob:; img-src ${webview.cspSource} data: https:;">
+  <link rel="stylesheet" href="${styleUri}" crossorigin>
   <title>Antigravity Tracer</title>
 </head>
 <body>
   <div id="root"></div>
-  <script nonce="${nonce}">const vscode = acquireVsCodeApi();</script>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
+  <script type="module" src="${scriptUri}" crossorigin></script>
 </body>
 </html>`;
   }

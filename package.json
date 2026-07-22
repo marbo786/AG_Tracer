@@ -9,5 +9,8 @@
   ],
   "engines": {
     "node": ">=18"
+  },
+  "scripts": {
+    "build:all": "npx tsc -b shared && npm run build --workspace=ui && npx tsc -b collector extension"
   }
 }
