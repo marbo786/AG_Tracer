@@ -67,4 +67,7 @@ npm run build:all
 
 In VS Code, press **`F5`** to launch the Extension Development Host. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run **`Antigravity Tracer: Open Antigravity Tracer`**. The panel opens and automatically starts tailing `transcript_full.jsonl` files inside `~/.gemini/antigravity/brain/`.
 
-## Project Structure
+## Contributing
+
+This project is under active development as part of a personal portfolio. Issues and suggestions are welcome via the [issue tracker](https://github.com/marbo786/AG_Tracer/issues).
+
