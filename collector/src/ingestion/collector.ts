@@ -25,11 +25,11 @@ export class Collector {
   private tailerLastActivity: Map<string, number> = new Map();
   private readonly TIMEOUT_MS = 30000;
 
-  constructor(brainPath: string, databasePath: string, events: CollectorEvents) {
+  constructor(brainPaths: string[], databasePath: string, events: CollectorEvents) {
     this.database = new TracerDatabase(databasePath);
     this.events = events;
 
-    this.brainWatcher = new BrainWatcher(brainPath, {
+    this.brainWatcher = new BrainWatcher(brainPaths, {
       onConversationFound: (folder) => {
         if (!this.tailers.has(folder.conversationId)) {
           const tailer = new TranscriptTailer(folder.transcriptPath, 0);

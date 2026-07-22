@@ -12,13 +12,13 @@ export interface BrainWatcherEvents {
 }
 
 export class BrainWatcher {
-  private brainPath: string;
+  private brainPaths: string[];
   private watcher: FSWatcher | null = null;
   private events: BrainWatcherEvents;
   private knownConversations: Set<string> = new Set();
 
-  constructor(brainPath: string, events: BrainWatcherEvents) {
-    this.brainPath = brainPath;
+  constructor(brainPaths: string[], events: BrainWatcherEvents) {
+    this.brainPaths = brainPaths;
     this.events = events;
   }
 
@@ -26,9 +26,13 @@ export class BrainWatcher {
    * Scan existing conversations and start watching for new ones.
    */
   public async start(): Promise<void> {
-    // Watch the brain directory recursively instead of using a glob pattern,
+    if (this.brainPaths.length === 0) {
+      return;
+    }
+
+    // Watch all brain directories recursively instead of using a glob pattern,
     // which avoids Windows glob parsing bugs in chokidar
-    this.watcher = watch(this.brainPath, {
+    this.watcher = watch(this.brainPaths, {
       ignoreInitial: false, 
       persistent: true,
       depth: 4
