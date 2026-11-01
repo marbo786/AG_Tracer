@@ -20,10 +20,6 @@ See exactly what your AI agent did inside the Google Antigravity IDE — every t
 
 AI coding agents like Antigravity move fast and mostly out of sight — you see the final diff, but not the trail of reads, writes, and tool calls that got there. **Antigravity Tracer** opens that up. It tails the agent's own execution logs and renders them as a live, scrollable timeline right inside the editor, so you can inspect what the agent actually did during a session rather than reconstructing it from memory.
 
-## Installation
-
-Search for **Antigravity Tracer** in the Extensions view — it's published on [Open VSX](https://open-vsx.org/extension/marbo786/antigravity-tracer). Alternatively, grab the `.vsix` from the [Releases](https://github.com/marbo786/AG_Tracer/releases) page and install it manually via **Extensions > Install from VSIX...**.
-
 ## Architecture
 
 Antigravity Tracer is a monorepo with four workspaces, each with a single responsibility:
@@ -53,21 +49,6 @@ flowchart LR
 - **Storage:** sql.js (WebAssembly SQLite — no native build step)
 - **Data flow:** Extension ↔ Webview messaging protocol; collector runs as a child process
 
-## Getting Started
-
-**Requirements:** Node.js >= 18
-
-```bash
-# 1. Install all workspace dependencies
-npm install
-
-# 2. Build everything (shared, ui, collector, extension)
-npm run build:all
-```
-
-In VS Code, press **`F5`** to launch the Extension Development Host. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run **`Antigravity Tracer: Open Antigravity Tracer`**. The panel opens and automatically starts tailing `transcript_full.jsonl` files inside `~/.gemini/antigravity/brain/`.
-
 ## Contributing
 
 This project is under active development as part of a personal portfolio. Issues and suggestions are welcome via the [issue tracker](https://github.com/marbo786/AG_Tracer/issues).
-
